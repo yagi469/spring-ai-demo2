@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring AI Streaming Demo</title>
+</head>
+<body>
+
+<h1>Spring AI Streaming Chat</h1>
+
+<input type="text" id="prompt-input" placeholder="プロンプトを入力..." size="50">
+<button onclick="startStream()">送信</button>
+
+<hr>
+
+<h3>AIからの応答:</h3>
+<div id="chat-output" style="border: 1px solid #ccc; padding: 10px; min-height: 100px; white-space: pre-wrap;"></div>
+
+<script>
+    let eventSource;
+    let chunkQueue = []; // チャンク（文字列）をためておくキュー
+    let isRendering = false; // 現在、表示処理中かどうかのフラグ
+    const renderInterval = 300; // チャンクを表示する間隔 (ミリ秒)。この数値を調整します。
+
+    function startStream() {
+        const prompt = document.getElementById('prompt-input').value;
+        const chatOutput = document.getElementById('chat-output');
+
+        if (eventSource) {
+            eventSource.close();
+        }
+        chatOutput.innerHTML = '';
+        chunkQueue = []; // キューをリセット
+
+        if (!prompt) return;
+
+        const url = `/api/stream/${encodeURIComponent(prompt)}`;
+        eventSource = new EventSource(url);
+
+        // サーバーからチャンクが届くたびに、このイベントが発火する
+        eventSource.onmessage = function(event) {
+            // ★★★ 変更点 ★★★
+            // チャンクをそのままキューに追加する
+            chunkQueue.push(event.data);
+
+            // もし描画処理が走っていなければ、新しく開始する
+            if (!isRendering) {
+                renderChunks();
+            }
+        };
+
+        eventSource.onerror = function(error) {
+            console.error("EventSource failed:", error);
+            isRendering = false;
+            eventSource.close();
+        };
+    }
+
+    function renderChunks() {
+        isRendering = true;
+        const chatOutput = document.getElementById('chat-output');
+
+        const intervalId = setInterval(() => {
+            // キューにチャンクがあれば、1つ取り出して表示
+            if (chunkQueue.length > 0) {
+                // ★★★ 変更点 ★★★
+                // shift()で先頭のチャンクを取り出し、そのまま追記
+                chatOutput.innerHTML += chunkQueue.shift();
+            } else {
+                // キューが空になったら、タイマーを停止して処理を終了
+                clearInterval(intervalId);
+                isRendering = false;
+            }
+        }, renderInterval); // 設定した間隔で実行
+    }
+</script>
+
+</body>
+</html>
